@@ -173,7 +173,30 @@
       download: document.getElementById("btnDownload")
     };
 
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+    const hasPdfJs = () => typeof window.pdfjsLib !== "undefined" && typeof window.pdfjsLib.getDocument === "function";
+
+    function ensurePdfJsConfigured() {
+      if (!hasPdfJs()) return false;
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+      }
+      return true;
+    }
+
+    function renderNativePdf(file) {
+      const fileUrl = URL.createObjectURL(file);
+      ui.viewer.innerHTML = "";
+      const frame = document.createElement("iframe");
+      frame.src = fileUrl;
+      frame.title = "Prévisualisation PDF";
+      frame.style.width = "min(100%, 900px)";
+      frame.style.height = "100%";
+      frame.style.border = "none";
+      frame.style.background = "#fff";
+      ui.viewer.appendChild(frame);
+      setReady(false);
+      alert("Mode lecture seule: impossible de charger PDF.js (connexion ou CDN indisponible).");
+    }
 
     function toolFromButton(id) {
       return { btnPen: "pen", btnHighlighter: "highlighter", btnText: "text", btnEraser: "eraser" }[id];
@@ -442,8 +465,18 @@
     }
 
     async function openPdf(file) {
+      if (!ensurePdfJsConfigured()) {
+        renderNativePdf(file);
+        return;
+      }
+
       const data = new Uint8Array(await file.arrayBuffer());
-      state.pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+      try {
+        state.pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+      } catch {
+        renderNativePdf(file);
+        return;
+      }
       state.pages = [];
       const firstPage = await state.pdfDoc.getPage(1);
       const base = firstPage.getViewport({ scale: 1 });

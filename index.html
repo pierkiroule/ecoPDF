@@ -509,7 +509,7 @@
         const targetCssWidth = baseViewport.width * state.scale;
         const targetCssHeight = baseViewport.height * state.scale;
 
-        const dpr = window.devicePixelRatio || 1;
+        const outputScale = window.devicePixelRatio || 1;
         const renderViewport = page.getViewport({ scale: state.scale });
 
         const wrap = document.createElement("section");
@@ -519,31 +519,26 @@
 
         const pdfCanvas = document.createElement("canvas");
         pdfCanvas.className = "pdf-layer";
-        pdfCanvas.width = Math.floor(renderViewport.width * dpr);
-        pdfCanvas.height = Math.floor(renderViewport.height * dpr);
-        pdfCanvas.style.width = `${targetCssWidth}px`;
-        pdfCanvas.style.height = `${targetCssHeight}px`;
+        pdfCanvas.width = Math.floor(renderViewport.width * outputScale);
+        pdfCanvas.height = Math.floor(renderViewport.height * outputScale);
 
         const annoCanvas = document.createElement("canvas");
         annoCanvas.className = "anno-layer";
         annoCanvas.width = pdfCanvas.width;
         annoCanvas.height = pdfCanvas.height;
-        annoCanvas.style.width = `${targetCssWidth}px`;
-        annoCanvas.style.height = `${targetCssHeight}px`;
 
         const textLayer = document.createElement("div");
         textLayer.className = "text-layer";
-        textLayer.style.width = `${targetCssWidth}px`;
-        textLayer.style.height = `${targetCssHeight}px`;
 
         wrap.append(pdfCanvas, annoCanvas, textLayer);
         ui.viewer.appendChild(wrap);
 
         const pdfCtx = pdfCanvas.getContext("2d", { alpha: false });
-        pdfCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const renderTransform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
 
         await page.render({
           canvasContext: pdfCtx,
+          transform: renderTransform,
           viewport: renderViewport
         }).promise;
 

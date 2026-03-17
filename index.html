@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>ecoPDF</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+
+body{
+margin:0;
+font-family:sans-serif;
+background:#111;
+color:white;
+overflow:hidden;
+}
+
+#bar{
+display:flex;
+flex-wrap:wrap;
+gap:8px;
+padding:10px;
+background:#222;
+}
+
+button,label{
+font-size:18px;
+padding:12px;
+border:none;
+border-radius:10px;
+background:#444;
+color:white;
+}
+
+button.active{
+background:#2d7cff;
+}
+
+#viewer{
+height:calc(100vh - 80px);
+overflow:auto;
+display:flex;
+flex-direction:column;
+align-items:center;
+gap:30px;
+padding:20px;
+}
+
+.page{
+position:relative;
+background:white;
+box-shadow:0 10px 30px rgba(0,0,0,.6);
+}
+
+.page canvas{
+display:block;
+width:100%;
+}
+
+.draw{
+position:absolute;
+left:0;
+top:0;
+touch-action:none;
+}
+
+.footer{
+position:fixed;
+bottom:0;
+left:0;
+right:0;
+font-size:12px;
+text-align:center;
+padding:6px;
+background:#111;
+opacity:.7;
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="bar">
+
+<label style="background:#2d7cff">
+📂 Ouvrir
+<input type="file" id="file" hidden accept="application/pdf">
+</label>
+
+<button id="drawBtn" class="active">✏️ Écrire</button>
+<button id="moveBtn">✋ Déplacer</button>
+<button id="undoBtn">↩ Annuler</button>
+
+<button id="downloadBtn" style="background:#2f9b4f">
+⬇ Télécharger
+</button>
+
+</div>
+
+<div id="viewer"></div>
+
+<div class="footer">
+ecoPDF — outil frugal local • Pier CyberPsychologue
+</div>
+
+<script>
+
+const viewer=document.getElementById("viewer")
+
+let pdf=null
+let scale=1.3
+let mode="draw"
+
+pdfjsLib.GlobalWorkerOptions.workerSrc=
+"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"
+
+file.onchange=async e=>{
+
+const f=e.target.files[0]
+if(!f)return
+
+const data=new Uint8Array(await f.arrayBuffer())
+
+pdf=await pdfjsLib.getDocument(data).promise
+
+render()
+
+}
+
+async function render(){
+
+viewer.innerHTML=""
+
+for(let i=1;i<=pdf.numPages;i++){
+
+const page=await pdf.getPage(i)
+
+const vp=page.getViewport({scale:scale*devicePixelRatio})
+
+const wrap=document.createElement("div")
+wrap.className="page"
+
+const pdfCanvas=document.createElement("canvas")
+const drawCanvas=document.createElement("canvas")
+
+drawCanvas.className="draw"
+
+pdfCanvas.width=vp.width
+pdfCanvas.height=vp.height
+
+drawCanvas.width=vp.width
+drawCanvas.height=vp.height
+
+pdfCanvas.style.width=vp.width/devicePixelRatio+"px"
+drawCanvas.style.width="100%"
+
+wrap.append(pdfCanvas,drawCanvas)
+
+viewer.appendChild(wrap)
+
+await page.render({
+canvasContext:pdfCanvas.getContext("2d"),
+viewport:vp
+}).promise
+
+setupDraw(drawCanvas)
+
+}
+
+}
+
+function setupDraw(canvas){
+
+const ctx=canvas.getContext("2d")
+
+let drawing=false
+let history=[]
+
+canvas.onpointerdown=e=>{
+
+if(mode!=="draw")return
+
+drawing=true
+
+history.push(canvas.toDataURL())
+
+ctx.beginPath()
+
+const p=pos(e,canvas)
+
+ctx.moveTo(p.x,p.y)
+
+}
+
+canvas.onpointermove=e=>{
+
+if(!drawing)return
+
+const p=pos(e,canvas)
+
+ctx.lineWidth=3*devicePixelRatio
+ctx.strokeStyle="#000"
+
+ctx.lineTo(p.x,p.y)
+ctx.stroke()
+
+}
+
+window.onpointerup=()=>drawing=false
+
+undoBtn.onclick=()=>{
+
+if(history.length===0)return
+
+let img=new Image()
+
+img.src=history.pop()
+
+img.onload=()=>{
+ctx.clearRect(0,0,canvas.width,canvas.height)
+ctx.drawImage(img,0,0)
+}
+
+}
+
+}
+
+function pos(e,c){
+
+const r=c.getBoundingClientRect()
+
+return{
+x:(e.clientX-r.left)*(c.width/r.width),
+y:(e.clientY-r.top)*(c.height/r.height)
+}
+
+}
+
+drawBtn.onclick=()=>{
+mode="draw"
+drawBtn.classList.add("active")
+moveBtn.classList.remove("active")
+}
+
+moveBtn.onclick=()=>{
+mode="move"
+moveBtn.classList.add("active")
+drawBtn.classList.remove("active")
+}
+
+viewer.onpointerdown=e=>{
+
+if(mode!=="move")return
+
+viewer.dataset.x=e.clientX
+viewer.dataset.y=e.clientY
+viewer.dataset.sx=viewer.scrollLeft
+viewer.dataset.sy=viewer.scrollTop
+
+}
+
+viewer.onpointermove=e=>{
+
+if(mode!=="move")return
+if(!viewer.dataset.x)return
+
+viewer.scrollLeft=
+viewer.dataset.sx-(e.clientX-viewer.dataset.x)
+
+viewer.scrollTop=
+viewer.dataset.sy-(e.clientY-viewer.dataset.y)
+
+}
+
+viewer.onpointerup=()=>viewer.dataset.x=null
+
+downloadBtn.onclick=async()=>{
+
+const {jsPDF}=window.jspdf
+
+const pages=document.querySelectorAll(".page")
+
+const first=pages[0].children[0]
+
+const pdfOut=new jsPDF({
+unit:"px",
+format:[first.width,first.height]
+})
+
+for(let i=0;i<pages.length;i++){
+
+const pdfCanvas=pages[i].children[0]
+const drawCanvas=pages[i].children[1]
+
+const merge=document.createElement("canvas")
+
+merge.width=pdfCanvas.width
+merge.height=pdfCanvas.height
+
+const ctx=merge.getContext("2d")
+
+ctx.drawImage(pdfCanvas,0,0)
+ctx.drawImage(drawCanvas,0,0)
+
+const img=merge.toDataURL()
+
+if(i>0)pdfOut.addPage([merge.width,merge.height])
+
+pdfOut.addImage(img,"PNG",0,0,merge.width,merge.height)
+
+}
+
+pdfOut.save("ecoPDF_document.pdf")
+
+}
+
+if("serviceWorker" in navigator){
+navigator.serviceWorker.register("service-worker.js")
+}
+
+</script>
+
+</body>
+</html>

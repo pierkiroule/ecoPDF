@@ -38,14 +38,21 @@
       top:0;
       z-index:10;
       padding:.6rem;
-      display:grid;
-      grid-template-columns:repeat(5,minmax(0,1fr));
+      display:flex;
+      flex-direction:column;
       gap:var(--gap);
       background:var(--panel);
       border-bottom:1px solid #2a2a2a;
     }
 
-    button,label{
+    .toolbar-main,
+    .toolbar-settings{
+      display:grid;
+      grid-template-columns:repeat(5,minmax(0,1fr));
+      gap:var(--gap);
+    }
+
+    button,label,select,input[type="range"]{
       border:none;
       border-radius:.75rem;
       padding:.8rem .55rem;
@@ -59,10 +66,26 @@
       cursor:pointer;
     }
 
+    input[type="range"]{
+      padding:.6rem;
+      cursor:pointer;
+    }
+
+    select{ appearance:none; }
+
     button:disabled{ opacity:.45; cursor:default; }
     .tool.active{ background:var(--btn-active); }
     #btnOpen{ background:#2959b8; }
     #btnDownload{ background:var(--ok); }
+
+    .color-swatch{
+      min-height:2.5rem;
+      border:2px solid transparent;
+      border-radius:.55rem;
+      padding:0;
+    }
+
+    .color-swatch.active{ border-color:#fff; }
 
     #viewer{
       flex:1;
@@ -78,6 +101,7 @@
 
     .page-wrap{
       position:relative;
+      flex:0 0 auto;
       background:#fff;
       box-shadow:0 4px 22px rgba(0,0,0,.55);
       border-radius:.2rem;
@@ -94,7 +118,7 @@
       display:block;
     }
 
-    .anno-layer{ z-index:2; touch-action:none; }
+    .anno-layer{ z-index:2; touch-action:pan-y pinch-zoom; }
     .text-layer{
       z-index:3;
       pointer-events:none;
@@ -126,22 +150,38 @@
     }
 
     @media (min-width:880px){
-      #toolbar{ grid-template-columns:repeat(10,minmax(0,1fr)); }
+      .toolbar-main,
+      .toolbar-settings{ grid-template-columns:repeat(10,minmax(0,1fr)); }
     }
   </style>
 </head>
 <body>
   <div id="toolbar">
-    <label id="btnOpen">Ouvrir<input id="fileInput" type="file" accept="application/pdf" hidden></label>
-    <button class="tool active" id="btnPen">Stylo</button>
-    <button class="tool" id="btnHighlighter">Surligneur</button>
-    <button class="tool" id="btnText">Texte</button>
-    <button class="tool" id="btnEraser">Gomme</button>
-    <button id="btnUndo" disabled>Annuler</button>
-    <button id="btnZoomIn" disabled>Zoom +</button>
-    <button id="btnZoomOut" disabled>Zoom -</button>
-    <button id="btnFit" disabled>Ajuster largeur</button>
-    <button id="btnDownload" disabled>Télécharger</button>
+    <div class="toolbar-main">
+      <label id="btnOpen">Ouvrir<input id="fileInput" type="file" accept="application/pdf" hidden></label>
+      <button class="tool active" id="btnPen">Stylo</button>
+      <button class="tool" id="btnHighlighter">Surligneur</button>
+      <button class="tool" id="btnText">Texte</button>
+      <button class="tool" id="btnEraser">Gomme</button>
+      <button id="btnUndo" disabled>Annuler</button>
+      <button id="btnZoomIn" disabled>Zoom +</button>
+      <button id="btnZoomOut" disabled>Zoom -</button>
+      <button id="btnFit" disabled>Ajuster largeur</button>
+      <button id="btnDownload" disabled>Télécharger</button>
+    </div>
+    <div class="toolbar-settings">
+      <button class="color-swatch active" data-color="0" style="background:#000000" title="Noir"></button>
+      <button class="color-swatch" data-color="1" style="background:#d21d1d" title="Rouge"></button>
+      <button class="color-swatch" data-color="2" style="background:#0f58c9" title="Bleu"></button>
+      <button class="color-swatch" data-color="3" style="background:#0f8a38" title="Vert"></button>
+      <input id="opacity" type="range" min="0.1" max="1" step="0.05" value="1" title="Opacité">
+      <select id="widthSelect" title="Épaisseur">
+        <option value="fin">Trait fin</option>
+        <option value="moyen" selected>Trait moyen</option>
+        <option value="epais">Trait épais</option>
+      </select>
+      <input id="eraserSize" type="range" min="8" max="60" step="2" value="24" title="Taille gomme">
+    </div>
   </div>
 
   <main id="viewer"></main>
@@ -159,6 +199,8 @@
       tool: "pen",
       colorIndex: 0,
       widthKey: "moyen",
+      opacity: 1,
+      eraserSize: 24,
       pages: []
     };
 
@@ -176,7 +218,11 @@
       zoomIn: document.getElementById("btnZoomIn"),
       zoomOut: document.getElementById("btnZoomOut"),
       fit: document.getElementById("btnFit"),
-      download: document.getElementById("btnDownload")
+      download: document.getElementById("btnDownload"),
+      opacity: document.getElementById("opacity"),
+      widthSelect: document.getElementById("widthSelect"),
+      eraserSize: document.getElementById("eraserSize"),
+      swatches: [...document.querySelectorAll(".color-swatch")]
     };
 
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -194,6 +240,11 @@
     function updateActiveTool(){
       Object.entries(ui.tools).forEach(([key, btn]) => {
         btn.classList.toggle("active", key === state.tool);
+      });
+
+      const drawMode = state.tool !== "text";
+      state.pages.forEach(pageState => {
+        pageState.annoCanvas.style.touchAction = drawMode ? "none" : "pan-y pinch-zoom";
       });
     }
 
@@ -240,7 +291,7 @@
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over";
-      ctx.globalAlpha = stroke.tool === "highlighter" ? 0.4 : 1;
+      ctx.globalAlpha = stroke.tool === "highlighter" ? Math.min(stroke.opacity, 0.6) : stroke.opacity;
       ctx.strokeStyle = stroke.color;
       ctx.lineWidth = stroke.width * renderScaleX;
 
@@ -282,15 +333,24 @@
       });
     }
 
-    function enableQuickSettings(){
-      document.querySelectorAll(".tool").forEach(btn => {
-        btn.oncontextmenu = (e) => {
-          e.preventDefault();
-          const c = prompt("Couleur : 0 noir, 1 rouge, 2 bleu, 3 vert", String(state.colorIndex));
-          const w = prompt("Épaisseur : fin, moyen, epais", state.widthKey);
-          if(c !== null && ["0","1","2","3"].includes(c.trim())) state.colorIndex = Number(c.trim());
-          if(w !== null && ["fin","moyen","epais"].includes(w.trim())) state.widthKey = w.trim();
-        };
+    function bindSettings(){
+      ui.swatches.forEach(btn => {
+        btn.addEventListener("click", () => {
+          state.colorIndex = Number(btn.dataset.color);
+          ui.swatches.forEach(el => el.classList.toggle("active", el === btn));
+        });
+      });
+
+      ui.opacity.addEventListener("input", () => {
+        state.opacity = Number(ui.opacity.value);
+      });
+
+      ui.widthSelect.addEventListener("change", () => {
+        state.widthKey = ui.widthSelect.value;
+      });
+
+      ui.eraserSize.addEventListener("input", () => {
+        state.eraserSize = Number(ui.eraserSize.value);
       });
     }
 
@@ -315,7 +375,8 @@
           type: "stroke",
           tool: state.tool,
           color: COLORS[state.colorIndex],
-          width: currentStrokeWidth(state.tool),
+          width: state.tool === "eraser" ? state.eraserSize : currentStrokeWidth(state.tool),
+          opacity: state.tool === "eraser" ? 1 : state.opacity,
           points: [p]
         };
 
@@ -448,8 +509,8 @@
         const targetCssWidth = baseViewport.width * state.scale;
         const targetCssHeight = baseViewport.height * state.scale;
 
-        const dpr = window.devicePixelRatio || 1;
-        const renderViewport = page.getViewport({ scale: state.scale * dpr });
+        const outputScale = window.devicePixelRatio || 1;
+        const renderViewport = page.getViewport({ scale: state.scale });
 
         const wrap = document.createElement("section");
         wrap.className = "page-wrap";
@@ -458,8 +519,8 @@
 
         const pdfCanvas = document.createElement("canvas");
         pdfCanvas.className = "pdf-layer";
-        pdfCanvas.width = Math.floor(renderViewport.width);
-        pdfCanvas.height = Math.floor(renderViewport.height);
+        pdfCanvas.width = Math.floor(renderViewport.width * outputScale);
+        pdfCanvas.height = Math.floor(renderViewport.height * outputScale);
 
         const annoCanvas = document.createElement("canvas");
         annoCanvas.className = "anno-layer";
@@ -472,8 +533,12 @@
         wrap.append(pdfCanvas, annoCanvas, textLayer);
         ui.viewer.appendChild(wrap);
 
+        const pdfCtx = pdfCanvas.getContext("2d", { alpha: false });
+        const renderTransform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
         await page.render({
-          canvasContext: pdfCanvas.getContext("2d", { alpha: false }),
+          canvasContext: pdfCtx,
+          transform: renderTransform,
           viewport: renderViewport
         }).promise;
 
@@ -517,7 +582,7 @@
 
       const firstPage = await state.pdfDoc.getPage(1);
       const base = firstPage.getViewport({ scale: 1 });
-      state.fitScale = Math.max(0.35, (ui.viewer.clientWidth - 16) / base.width);
+      state.fitScale = Math.max(0.35, (ui.viewer.clientWidth - 24) / base.width);
       state.scale = state.fitScale;
 
       await renderAllPages();
@@ -610,10 +675,10 @@
       if(!state.pdfDoc) return;
       const firstPage = await state.pdfDoc.getPage(1);
       const base = firstPage.getViewport({ scale: 1 });
-      state.fitScale = Math.max(0.35, (ui.viewer.clientWidth - 16) / base.width);
+      state.fitScale = Math.max(0.35, (ui.viewer.clientWidth - 24) / base.width);
     });
 
-    enableQuickSettings();
+    bindSettings();
     updateActiveTool();
     setReady(false);
   </script>

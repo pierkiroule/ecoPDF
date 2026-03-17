@@ -1,333 +1,531 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>ecoPDF — Pier CyberPsychologue</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111111">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #111;
+      --panel: #1b1b1b;
+      --btn: #303030;
+      --btn-active: #0065ff;
+      --text: #fff;
+      --danger: #c12f2f;
+      --ok: #1d8f44;
+      --gap: 0.65rem;
+    }
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+    * { box-sizing: border-box; }
 
-<title>ecoPDF</title>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
 
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#111111">
+    #toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 0.6rem;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: var(--gap);
+      background: var(--panel);
+      border-bottom: 1px solid #2a2a2a;
+    }
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    button, label {
+      border: none;
+      border-radius: 0.75rem;
+      padding: 0.8rem 0.55rem;
+      background: var(--btn);
+      color: var(--text);
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-align: center;
+      min-height: 3rem;
+      touch-action: manipulation;
+    }
 
-<style>
+    button:disabled { opacity: 0.45; }
+    .tool.active { background: var(--btn-active); }
+    #btnOpen { background: #2959b8; }
+    #btnDownload { background: var(--ok); }
 
-body{
-margin:0;
-font-family:sans-serif;
-background:#111;
-color:white;
-overflow:hidden;
-}
+    #viewer {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      align-items: center;
+      -webkit-overflow-scrolling: touch;
+    }
 
-#bar{
-display:flex;
-flex-wrap:wrap;
-gap:8px;
-padding:10px;
-background:#222;
-}
+    .page-wrap {
+      position: relative;
+      width: min(100%, 900px);
+      background: #fff;
+      box-shadow: 0 4px 22px rgba(0, 0, 0, 0.55);
+      border-radius: 0.2rem;
+      overflow: hidden;
+    }
 
-button,label{
-font-size:18px;
-padding:12px;
-border:none;
-border-radius:10px;
-background:#444;
-color:white;
-}
+    .pdf-layer, .anno-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
 
-button.active{
-background:#2d7cff;
-}
+    .anno-layer { z-index: 2; }
 
-#viewer{
-height:calc(100vh - 80px);
-overflow:auto;
-display:flex;
-flex-direction:column;
-align-items:center;
-gap:30px;
-padding:20px;
-}
+    .text-item {
+      position: absolute;
+      min-width: 1.5rem;
+      min-height: 1.2rem;
+      color: #000;
+      font: 18px/1.2 Arial, sans-serif;
+      white-space: pre-wrap;
+      user-select: none;
+      z-index: 3;
+      cursor: move;
+      border: 1px dashed transparent;
+      padding: 0.08rem;
+    }
 
-.page{
-position:relative;
-background:white;
-box-shadow:0 10px 30px rgba(0,0,0,.6);
-}
+    .text-item.selected { border-color: #0065ff; }
 
-.page canvas{
-display:block;
-width:100%;
-}
+    .brand {
+      text-align: center;
+      font-size: 0.8rem;
+      opacity: 0.8;
+      padding: 0.45rem 0.6rem calc(0.5rem + env(safe-area-inset-bottom));
+      background: #101010;
+      border-top: 1px solid #2a2a2a;
+    }
 
-.draw{
-position:absolute;
-left:0;
-top:0;
-touch-action:none;
-}
-
-.footer{
-position:fixed;
-bottom:0;
-left:0;
-right:0;
-font-size:12px;
-text-align:center;
-padding:6px;
-background:#111;
-opacity:.7;
-}
-
-</style>
+    @media (min-width: 880px) {
+      #toolbar { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+    }
+  </style>
 </head>
-
 <body>
-
-<div id="bar">
-
-<label style="background:#2d7cff">
-📂 Ouvrir
-<input type="file" id="file" hidden accept="application/pdf">
-</label>
-
-<button id="drawBtn" class="active">✏️ Écrire</button>
-<button id="moveBtn">✋ Déplacer</button>
-<button id="undoBtn">↩ Annuler</button>
-
-<button id="downloadBtn" style="background:#2f9b4f">
-⬇ Télécharger
-</button>
-
-</div>
-
-<div id="viewer"></div>
-
-<div class="footer">
-ecoPDF — outil frugal local • Pier CyberPsychologue
-</div>
-
-<script>
-
-const viewer=document.getElementById("viewer")
-
-let pdf=null
-let scale=1.3
-let mode="draw"
-
-pdfjsLib.GlobalWorkerOptions.workerSrc=
-"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js"
-
-file.onchange=async e=>{
-
-const f=e.target.files[0]
-if(!f)return
-
-const data=new Uint8Array(await f.arrayBuffer())
-
-pdf=await pdfjsLib.getDocument(data).promise
-
-render()
-
-}
-
-async function render(){
-
-viewer.innerHTML=""
-
-for(let i=1;i<=pdf.numPages;i++){
-
-const page=await pdf.getPage(i)
-
-const vp=page.getViewport({scale:scale*devicePixelRatio})
-
-const wrap=document.createElement("div")
-wrap.className="page"
-
-const pdfCanvas=document.createElement("canvas")
-const drawCanvas=document.createElement("canvas")
-
-drawCanvas.className="draw"
-
-pdfCanvas.width=vp.width
-pdfCanvas.height=vp.height
-
-drawCanvas.width=vp.width
-drawCanvas.height=vp.height
-
-pdfCanvas.style.width=vp.width/devicePixelRatio+"px"
-drawCanvas.style.width="100%"
-
-wrap.append(pdfCanvas,drawCanvas)
-
-viewer.appendChild(wrap)
-
-await page.render({
-canvasContext:pdfCanvas.getContext("2d"),
-viewport:vp
-}).promise
-
-setupDraw(drawCanvas)
-
-}
-
-}
-
-function setupDraw(canvas){
-
-const ctx=canvas.getContext("2d")
-
-let drawing=false
-let history=[]
-
-canvas.onpointerdown=e=>{
-
-if(mode!=="draw")return
-
-drawing=true
-
-history.push(canvas.toDataURL())
-
-ctx.beginPath()
-
-const p=pos(e,canvas)
-
-ctx.moveTo(p.x,p.y)
-
-}
-
-canvas.onpointermove=e=>{
-
-if(!drawing)return
-
-const p=pos(e,canvas)
-
-ctx.lineWidth=3*devicePixelRatio
-ctx.strokeStyle="#000"
-
-ctx.lineTo(p.x,p.y)
-ctx.stroke()
-
-}
-
-window.onpointerup=()=>drawing=false
-
-undoBtn.onclick=()=>{
-
-if(history.length===0)return
-
-let img=new Image()
-
-img.src=history.pop()
-
-img.onload=()=>{
-ctx.clearRect(0,0,canvas.width,canvas.height)
-ctx.drawImage(img,0,0)
-}
-
-}
-
-}
-
-function pos(e,c){
-
-const r=c.getBoundingClientRect()
-
-return{
-x:(e.clientX-r.left)*(c.width/r.width),
-y:(e.clientY-r.top)*(c.height/r.height)
-}
-
-}
-
-drawBtn.onclick=()=>{
-mode="draw"
-drawBtn.classList.add("active")
-moveBtn.classList.remove("active")
-}
-
-moveBtn.onclick=()=>{
-mode="move"
-moveBtn.classList.add("active")
-drawBtn.classList.remove("active")
-}
-
-viewer.onpointerdown=e=>{
-
-if(mode!=="move")return
-
-viewer.dataset.x=e.clientX
-viewer.dataset.y=e.clientY
-viewer.dataset.sx=viewer.scrollLeft
-viewer.dataset.sy=viewer.scrollTop
-
-}
-
-viewer.onpointermove=e=>{
-
-if(mode!=="move")return
-if(!viewer.dataset.x)return
-
-viewer.scrollLeft=
-viewer.dataset.sx-(e.clientX-viewer.dataset.x)
-
-viewer.scrollTop=
-viewer.dataset.sy-(e.clientY-viewer.dataset.y)
-
-}
-
-viewer.onpointerup=()=>viewer.dataset.x=null
-
-downloadBtn.onclick=async()=>{
-
-const {jsPDF}=window.jspdf
-
-const pages=document.querySelectorAll(".page")
-
-const first=pages[0].children[0]
-
-const pdfOut=new jsPDF({
-unit:"px",
-format:[first.width,first.height]
-})
-
-for(let i=0;i<pages.length;i++){
-
-const pdfCanvas=pages[i].children[0]
-const drawCanvas=pages[i].children[1]
-
-const merge=document.createElement("canvas")
-
-merge.width=pdfCanvas.width
-merge.height=pdfCanvas.height
-
-const ctx=merge.getContext("2d")
-
-ctx.drawImage(pdfCanvas,0,0)
-ctx.drawImage(drawCanvas,0,0)
-
-const img=merge.toDataURL()
-
-if(i>0)pdfOut.addPage([merge.width,merge.height])
-
-pdfOut.addImage(img,"PNG",0,0,merge.width,merge.height)
-
-}
-
-pdfOut.save("ecoPDF_document.pdf")
-
-}
-
-if("serviceWorker" in navigator){
-navigator.serviceWorker.register("service-worker.js")
-}
-
-</script>
-
+  <div id="toolbar">
+    <label id="btnOpen">Ouvrir<input id="fileInput" type="file" accept="application/pdf" hidden></label>
+    <button class="tool active" id="btnPen">Stylo</button>
+    <button class="tool" id="btnHighlighter">Surligneur</button>
+    <button class="tool" id="btnText">Texte</button>
+    <button class="tool" id="btnEraser">Gomme</button>
+    <button id="btnUndo" disabled>Annuler</button>
+    <button id="btnZoomIn" disabled>Zoom +</button>
+    <button id="btnZoomOut" disabled>Zoom -</button>
+    <button id="btnFit" disabled>Ajuster largeur</button>
+    <button id="btnDownload" disabled>Télécharger</button>
+  </div>
+
+  <main id="viewer" aria-live="polite"></main>
+  <div class="brand">ecoPDF — Pier CyberPsychologue</div>
+
+  <script>
+    const COLORS = ["#000000", "#d21d1d", "#0f58c9", "#0f8a38"];
+    const PEN_WIDTHS = { fin: 2, moyen: 4, epais: 7 };
+    const HIGHLIGHT_WIDTHS = { fin: 10, moyen: 14, epais: 19 };
+
+    const state = {
+      pdfDoc: null,
+      scale: 1,
+      fitScale: 1,
+      tool: "pen",
+      colorIndex: 0,
+      widthKey: "moyen",
+      pages: []
+    };
+
+    const ui = {
+      viewer: document.getElementById("viewer"),
+      fileInput: document.getElementById("fileInput"),
+      toolbar: document.getElementById("toolbar"),
+      tools: {
+        pen: document.getElementById("btnPen"),
+        highlighter: document.getElementById("btnHighlighter"),
+        text: document.getElementById("btnText"),
+        eraser: document.getElementById("btnEraser")
+      },
+      undo: document.getElementById("btnUndo"),
+      zoomIn: document.getElementById("btnZoomIn"),
+      zoomOut: document.getElementById("btnZoomOut"),
+      fit: document.getElementById("btnFit"),
+      download: document.getElementById("btnDownload")
+    };
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+
+    function toolFromButton(id) {
+      return { btnPen: "pen", btnHighlighter: "highlighter", btnText: "text", btnEraser: "eraser" }[id];
+    }
+
+    function updateActiveTool() {
+      Object.entries(ui.tools).forEach(([key, btn]) => btn.classList.toggle("active", key === state.tool));
+    }
+
+    function setReady(ready) {
+      [ui.undo, ui.zoomIn, ui.zoomOut, ui.fit, ui.download].forEach((el) => (el.disabled = !ready));
+    }
+
+    function pushHistory(pageState) {
+      pageState.history.push(JSON.stringify(pageState.annotations));
+      if (pageState.history.length > 100) pageState.history.shift();
+      ui.undo.disabled = pageState.history.length === 0;
+    }
+
+    function restoreHistory(pageState) {
+      if (!pageState.history.length) return;
+      const snap = pageState.history.pop();
+      pageState.annotations = JSON.parse(snap);
+      drawAnnotationLayer(pageState);
+      ui.undo.disabled = pageState.history.length === 0;
+    }
+
+    function pagePoint(event, pageState) {
+      const rect = pageState.annoCanvas.getBoundingClientRect();
+      const relX = (event.clientX - rect.left) / rect.width;
+      const relY = (event.clientY - rect.top) / rect.height;
+      return {
+        x: Math.max(0, Math.min(1, relX)) * pageState.baseWidth,
+        y: Math.max(0, Math.min(1, relY)) * pageState.baseHeight
+      };
+    }
+
+    function currentStrokeWidth(tool) {
+      const scale = tool === "highlighter" ? HIGHLIGHT_WIDTHS : PEN_WIDTHS;
+      return scale[state.widthKey];
+    }
+
+    function drawStroke(ctx, stroke, renderScale) {
+      if (!stroke.points.length) return;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over";
+      ctx.globalAlpha = stroke.tool === "highlighter" ? 0.4 : 1;
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = stroke.width * renderScale;
+      ctx.beginPath();
+      ctx.moveTo(stroke.points[0].x * renderScale, stroke.points[0].y * renderScale);
+      for (let i = 1; i < stroke.points.length; i += 1) {
+        const pt = stroke.points[i];
+        ctx.lineTo(pt.x * renderScale, pt.y * renderScale);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawAnnotationLayer(pageState) {
+      const ctx = pageState.annoCanvas.getContext("2d");
+      ctx.clearRect(0, 0, pageState.annoCanvas.width, pageState.annoCanvas.height);
+      pageState.textLayer.innerHTML = "";
+      const renderScale = pageState.cssWidth / pageState.baseWidth;
+
+      pageState.annotations.forEach((entry) => {
+        if (entry.type === "stroke") {
+          drawStroke(ctx, entry, renderScale);
+          return;
+        }
+
+        const textDiv = document.createElement("div");
+        textDiv.className = "text-item";
+        textDiv.dataset.id = entry.id;
+        textDiv.textContent = entry.text;
+        textDiv.style.left = `${entry.x * renderScale}px`;
+        textDiv.style.top = `${entry.y * renderScale}px`;
+        pageState.textLayer.appendChild(textDiv);
+      });
+    }
+
+    function enableQuickSettings() {
+      // Tap long sur un outil pour changer rapidement couleur/épaisseur sans menu complexe.
+      document.querySelectorAll(".tool").forEach((btn) => {
+        btn.oncontextmenu = (e) => {
+          e.preventDefault();
+          const c = prompt("Couleur (0 noir, 1 rouge, 2 bleu, 3 vert)", String(state.colorIndex));
+          const w = prompt("Épaisseur (fin, moyen, epais)", state.widthKey);
+          if (c !== null && ["0", "1", "2", "3"].includes(c.trim())) state.colorIndex = Number(c.trim());
+          if (w !== null && ["fin", "moyen", "epais"].includes(w.trim())) state.widthKey = w.trim();
+        };
+      });
+    }
+
+    function bindPageEvents(pageState) {
+      const pointers = new Map();
+      let drawingStroke = null;
+      let draggingText = null;
+
+      pageState.annoCanvas.addEventListener("pointerdown", (event) => {
+        pageState.active = true;
+        ui.undo.disabled = pageState.history.length === 0;
+        pointers.set(event.pointerId, true);
+
+        if (pointers.size > 1) return; // deux doigts = navigation verticale naturelle
+        if (state.tool === "text") return;
+
+        event.preventDefault();
+        const p = pagePoint(event, pageState);
+        drawingStroke = {
+          type: "stroke",
+          tool: state.tool,
+          color: COLORS[state.colorIndex],
+          width: currentStrokeWidth(state.tool),
+          points: [p]
+        };
+        pageState.annoCanvas.setPointerCapture(event.pointerId);
+      });
+
+      pageState.annoCanvas.addEventListener("pointermove", (event) => {
+        if (!drawingStroke || pointers.size > 1) return;
+        event.preventDefault();
+        drawingStroke.points.push(pagePoint(event, pageState));
+        drawAnnotationLayer({ ...pageState, annotations: [...pageState.annotations, drawingStroke] });
+      });
+
+      pageState.annoCanvas.addEventListener("pointerup", (event) => {
+        pointers.delete(event.pointerId);
+        if (!drawingStroke || drawingStroke.points.length < 1) return;
+        pushHistory(pageState);
+        pageState.annotations.push(drawingStroke);
+        drawingStroke = null;
+        drawAnnotationLayer(pageState);
+      });
+
+      pageState.annoCanvas.addEventListener("pointercancel", () => {
+        drawingStroke = null;
+      });
+
+      pageState.textLayer.addEventListener("pointerdown", (event) => {
+        const target = event.target.closest(".text-item");
+        if (!target || state.tool !== "text") return;
+        event.preventDefault();
+        const id = target.dataset.id;
+        const entry = pageState.annotations.find((x) => x.type === "text" && x.id === id);
+        if (!entry) return;
+        draggingText = { id, dx: event.offsetX, dy: event.offsetY };
+        target.classList.add("selected");
+      });
+
+      pageState.textLayer.addEventListener("pointermove", (event) => {
+        if (!draggingText || state.tool !== "text") return;
+        event.preventDefault();
+        const entry = pageState.annotations.find((x) => x.type === "text" && x.id === draggingText.id);
+        if (!entry) return;
+        const p = pagePoint(event, pageState);
+        entry.x = Math.max(0, p.x - draggingText.dx * (pageState.baseWidth / pageState.cssWidth));
+        entry.y = Math.max(0, p.y - draggingText.dy * (pageState.baseHeight / pageState.cssWidth));
+        drawAnnotationLayer(pageState);
+      });
+
+      pageState.textLayer.addEventListener("pointerup", () => {
+        if (!draggingText || state.tool !== "text") return;
+        pushHistory(pageState);
+        draggingText = null;
+      });
+
+      pageState.annoCanvas.addEventListener("click", (event) => {
+        if (state.tool !== "text") return;
+        if (event.target.closest(".text-item")) return;
+        const value = prompt("Texte à poser :");
+        if (!value || !value.trim()) return;
+        const p = pagePoint(event, pageState);
+        pushHistory(pageState);
+        pageState.annotations.push({
+          type: "text",
+          id: `txt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          text: value.trim(),
+          x: p.x,
+          y: p.y,
+          color: "#000"
+        });
+        drawAnnotationLayer(pageState);
+      });
+
+      pageState.textLayer.addEventListener("dblclick", (event) => {
+        if (state.tool !== "text") return;
+        const target = event.target.closest(".text-item");
+        if (!target) return;
+        const id = target.dataset.id;
+        const idx = pageState.annotations.findIndex((x) => x.type === "text" && x.id === id);
+        if (idx === -1) return;
+        const prev = pageState.annotations[idx].text;
+        const next = prompt("Modifier (vide = supprimer)", prev);
+        if (next === null) return;
+        pushHistory(pageState);
+        if (!next.trim()) pageState.annotations.splice(idx, 1);
+        else pageState.annotations[idx].text = next.trim();
+        drawAnnotationLayer(pageState);
+      });
+    }
+
+    async function renderAllPages() {
+      if (!state.pdfDoc) return;
+      ui.viewer.innerHTML = "";
+      const oldPages = state.pages;
+      state.pages = [];
+
+      for (let pageNum = 1; pageNum <= state.pdfDoc.numPages; pageNum += 1) {
+        const page = await state.pdfDoc.getPage(pageNum);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const targetCssWidth = baseViewport.width * state.scale;
+        const renderScale = window.devicePixelRatio || 1;
+        const renderViewport = page.getViewport({ scale: state.scale * renderScale });
+
+        const wrap = document.createElement("section");
+        wrap.className = "page-wrap";
+        wrap.style.height = `${baseViewport.height * state.scale}px`;
+        wrap.style.width = `${targetCssWidth}px`;
+
+        const pdfCanvas = document.createElement("canvas");
+        pdfCanvas.className = "pdf-layer";
+        pdfCanvas.width = Math.floor(renderViewport.width);
+        pdfCanvas.height = Math.floor(renderViewport.height);
+
+        const annoCanvas = document.createElement("canvas");
+        annoCanvas.className = "anno-layer";
+        annoCanvas.width = pdfCanvas.width;
+        annoCanvas.height = pdfCanvas.height;
+
+        const textLayer = document.createElement("div");
+        textLayer.className = "anno-layer";
+        textLayer.style.pointerEvents = "auto";
+
+        wrap.append(pdfCanvas, annoCanvas, textLayer);
+        ui.viewer.appendChild(wrap);
+
+        await page.render({
+          canvasContext: pdfCanvas.getContext("2d", { alpha: false }),
+          viewport: renderViewport
+        }).promise;
+
+        const previous = oldPages[pageNum - 1];
+        const pageState = {
+          index: pageNum,
+          baseWidth: baseViewport.width,
+          baseHeight: baseViewport.height,
+          cssWidth: targetCssWidth,
+          annotations: previous ? previous.annotations : [],
+          history: previous ? previous.history : [],
+          active: false,
+          pdfCanvas,
+          annoCanvas,
+          textLayer
+        };
+
+        drawAnnotationLayer(pageState);
+        bindPageEvents(pageState);
+        state.pages.push(pageState);
+      }
+
+      setReady(true);
+      ui.undo.disabled = true;
+    }
+
+    async function openPdf(file) {
+      const data = new Uint8Array(await file.arrayBuffer());
+      state.pdfDoc = await pdfjsLib.getDocument({ data }).promise;
+      state.pages = [];
+      const firstPage = await state.pdfDoc.getPage(1);
+      const base = firstPage.getViewport({ scale: 1 });
+      state.fitScale = Math.max(0.35, (ui.viewer.clientWidth - 16) / base.width);
+      state.scale = state.fitScale;
+      await renderAllPages();
+    }
+
+    async function exportPdf() {
+      if (!state.pages.length) return;
+      const { jsPDF } = window.jspdf;
+      const first = state.pages[0];
+      const pdfOut = new jsPDF({ unit: "px", format: [first.pdfCanvas.width, first.pdfCanvas.height] });
+
+      for (let i = 0; i < state.pages.length; i += 1) {
+        const pageState = state.pages[i];
+        const merged = document.createElement("canvas");
+        merged.width = pageState.pdfCanvas.width;
+        merged.height = pageState.pdfCanvas.height;
+        const ctx = merged.getContext("2d", { alpha: false });
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, merged.width, merged.height);
+        ctx.drawImage(pageState.pdfCanvas, 0, 0);
+        ctx.drawImage(pageState.annoCanvas, 0, 0);
+
+        const img = merged.toDataURL("image/jpeg", 0.92);
+        if (i > 0) pdfOut.addPage([merged.width, merged.height]);
+        pdfOut.addImage(img, "JPEG", 0, 0, merged.width, merged.height, undefined, "FAST");
+      }
+
+      const cleanName = (ui.fileInput.files[0]?.name || "document.pdf").replace(/\.pdf$/i, "");
+      pdfOut.save(`${cleanName}_ecopdf_annote.pdf`);
+    }
+
+    ui.toolbar.addEventListener("click", (event) => {
+      const btn = event.target.closest("button");
+      if (!btn || !btn.classList.contains("tool")) return;
+      state.tool = toolFromButton(btn.id);
+      updateActiveTool();
+    });
+
+    ui.fileInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      await openPdf(file);
+    });
+
+    ui.undo.addEventListener("click", () => {
+      const active = state.pages.find((p) => p.active) || state.pages[0];
+      if (active) restoreHistory(active);
+    });
+
+    ui.zoomIn.addEventListener("click", async () => {
+      state.scale = Math.min(3, state.scale * 1.15);
+      await renderAllPages();
+    });
+
+    ui.zoomOut.addEventListener("click", async () => {
+      state.scale = Math.max(0.35, state.scale / 1.15);
+      await renderAllPages();
+    });
+
+    ui.fit.addEventListener("click", async () => {
+      state.scale = state.fitScale;
+      await renderAllPages();
+    });
+
+    ui.download.addEventListener("click", exportPdf);
+
+    window.addEventListener("resize", async () => {
+      if (!state.pdfDoc) return;
+      const firstPage = await state.pdfDoc.getPage(1);
+      const base = firstPage.getViewport({ scale: 1 });
+      state.fitScale = Math.max(0.35, (ui.viewer.clientWidth - 16) / base.width);
+    });
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    }
+
+    enableQuickSettings();
+    setReady(false);
+  </script>
 </body>
 </html>
